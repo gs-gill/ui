@@ -25,18 +25,19 @@
             alt="Phone image">
         </div>
         <div class="col-md-5 col-lg-5 col-xl-5 card" id="input_card">
-          <form class="card-body" data-bind="submit:handleSubmit" action="chat.html">
+          <form class="card-body" data-bind="submit:handleSubmit" action="index.html">
             <div class="form-outline mb-4">
               <label class="form-label" id="attrib">Name</label>
-              <input type="text" placeholder="Enter Your Name" data-bind="value:name, css:{error:name.error() && name.isModified()}" id="name"
-                name="name" class="form-control form-control-lg shadow-sm" />
+              <input type="text" placeholder="Enter Your Name"
+                data-bind="value:name, css:{error:name.error() && name.isModified()}" id="name" name="name"
+                class="form-control form-control-lg shadow-sm" />
             </div>
 
             <div class="form-outline mb-4">
-                <label class="form-label" id="attrib">Age</label>
-                <input type="number" placeholder="Enter Your Age" data-bind="value:age" id="age"
-                  name="age" class="form-control form-control-lg shadow-sm" />
-              </div>
+              <label class="form-label" id="attrib">Age</label>
+              <input type="number" placeholder="Enter Your Age" data-bind="value:age" id="age" name="age"
+                class="form-control form-control-lg shadow-sm" />
+            </div>
 
             <div class="form-outline mb-4">
               <label class="form-label" id="attrib">Gender</label>
