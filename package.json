@@ -1,8 +1,8 @@
 {
-  "name": "fun-chat",
-  "version": "1.0.0",
+  "name": "pulse-chat",
+  "version": "2.0.0",
   "private": true,
-  "description": "A small real-time public and private chat app.",
+  "description": "A polished real-time public and private chat app.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -19,4 +19,3 @@
     "socket.io-client": "^4.8.1"
   }
 }
-

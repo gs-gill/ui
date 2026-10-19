@@ -1,33 +1,27 @@
-function AccountViewModel() {
-    var self = this;
+const form = document.getElementById("join-form");
+const nameInput = document.getElementById("name");
+const ageInput = document.getElementById("age");
 
-    self.name = ko.observable('').extend({
-        required: true,
-        minLength: 3,
-        pattern: { message: 'Username cannot contain spaces.', params: '^\\S*$' }
-    });
+function setError(input, message) {
+  input.setAttribute("aria-invalid", String(Boolean(message)));
+  document.getElementById(`${input.id}-error`).textContent = message;
+}
 
-    self.age = ko.observable().extend({
-        required: true,
-        digit: true,
-        minLength: 2,
-        maxLength: 2
-    });
+function validate() {
+  const name = nameInput.value.trim();
+  const age = Number(ageInput.value);
+  setError(nameInput, name.length < 2 ? "Use at least 2 characters." : "");
+  setError(ageInput, !Number.isInteger(age) || age < 13 || age > 120 ? "Enter an age from 13 to 120." : "");
+  return name.length >= 2 && Number.isInteger(age) && age >= 13 && age <= 120;
+}
 
-    self.handleSubmit = function(){
-        var errors = ko.validation.group(self);
-        if (errors().length > 0) {
-            console.log('error occured')
-            errors.showAllMessages();
-            return;
-         }
-        var payload = {
-            name: self.name(),
-            age: self.age()
-        }
-        console.log('submitted form', payload)
-        return true;
-    }
-};
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!validate()) return;
+  const params = new URLSearchParams({ name: nameInput.value.trim(), age: ageInput.value, gender: document.getElementById("gender").value });
+  window.location.assign(`/index.html?${params}`);
+});
 
-ko.applyBindings(new AccountViewModel());
+[nameInput, ageInput].forEach((input) => input.addEventListener("input", () => {
+  if (input.getAttribute("aria-invalid") === "true") validate();
+}));
