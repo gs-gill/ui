@@ -45,6 +45,17 @@ cursor: pointer;
 	width: 80%;
 	margin-left: 1rem;
 }
+.message-row{
+	display: flex;
+	margin-bottom: 0.75rem;
+}
+.message-bubble{
+	max-width: 75%;
+}
+.message-bubble > p:last-child{
+	background-color: #f5f6f7;
+	color: #212529;
+}
 .close_icon:hover{
 cursor: pointer;
 color : red;
@@ -59,7 +70,7 @@ color : red;
 #private_col{
 	width: 100%;
 }
-:is(#chat-user,#online-user):hover{
+:is(.chat-user,.online-user):hover{
 	background: rgb(137 126 126 / 50%);
 	cursor: pointer;
 }
@@ -129,10 +140,11 @@ and (max-device-width : 640px)
 #chat-user-icon{
 	display: block!important;
 }
-#user_detail{
+.user-detail{
 	display: grid!important;
 }
 #left-side, #right-side{
 	width: 60%;
 }
 }
+
