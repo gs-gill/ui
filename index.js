@@ -1,172 +1,152 @@
-const socket = io('https://flaxen-boundless-buckthornpepperberry.glitch.me/');
+const socket = io();
 
-var cur_on_user = [
-  { name: "Bert", Age: 22, gender: "M" },
-  { name: "Charles", Age: 21, gender: "M" },
-  { name: "Denise", Age: 23, gender: "F" },
-  { name: "Ronald", Age: 25, gender: "M" },
-  { name: "Michael", Age: 20, gender: "F" },
-];
-var cur_chat_user = [];
-const queryString = window.location.search;
-const urlParams = new URLSearchParams(queryString);
-const gender = urlParams.get('gender')
-const user_name = urlParams.get('name')
-const user_age = urlParams.get('age')
-const cur_data = { name: user_name, Age: user_age, gender: gender }
-console.log('query', user_name, user_age, gender)
+const params = new URLSearchParams(window.location.search);
+const currentUser = {
+  name: (params.get("name") || "").trim(),
+  Age: params.get("age") || "",
+  gender: params.get("gender") || "Other",
+};
 
+function chatId(name) {
+  return `chat-${encodeURIComponent(name)}`;
+}
 
 function AppViewModel() {
-  var self = this;
-
-  self.people = ko.observableArray(cur_chat_user);
-
-  self.onlineUser = ko.observableArray([]);
+  this.people = ko.observableArray([]);
+  this.onlineUser = ko.observableArray([]);
+  this.connectionStatus = ko.observable("Connecting…");
 }
 
-var model = new AppViewModel();
+const model = new AppViewModel();
 ko.applyBindings(model);
-socket.emit('new-user-joined', cur_data)
-const s_width = screen.width;
-const main_chatbox = document.getElementById("main");
-var prv_id = "private_col";
-var active_chat = "main";
-const channel_collapse = document.getElementsByClassName(
-  "collapse main_collapse"
-);
-const btn = document.getElementsByClassName("btn-warning");
 
-function view_chatbox(to_user) {
-  const chatbox = document.getElementById(to_user);
-  const cur_chatbox = document.getElementById(active_chat);
-  cur_chatbox.classList.add("d-none");
-  chatbox.classList.remove("d-none");
-  active_chat = to_user;
-  toggleCanvas();
+const mainChatbox = document.getElementById("main");
+let activeChat = "main";
+
+function setStatus(message, kind = "secondary") {
+  model.connectionStatus(message);
+  const status = document.getElementById("connection-status");
+  status.className = `badge text-bg-${kind}`;
 }
 
-function remove(data) {
-  r_user = data.parentElement.innerText;
-  cur_chat_user = cur_chat_user.filter((x) => x != r_user);
-  //Add advance if loop below
-  if (s_width <= 640) {
-    prv_id = "private_canv_col";
-  }
-  if (cur_chat_user.length == 0) {
-    const prv = document.getElementById(prv_id);
-    prv.classList.remove("show");
-  }
-  model.people(cur_chat_user);
-  if (r_user == active_chat) {
-    main_chatbox.classList.remove("d-none");
-    active_chat = "main";
+function ensureConversation(name) {
+  if (!model.people().includes(name)) {
+    model.people.push(name);
   }
 }
 
-function dm(data) {
-  const u_id = "user" + data.parentElement.parentElement.id.replace("col", "");
-  const user_name = document.getElementById(u_id).innerText;
-  //Add advance if loop below
-  if (s_width <= 640) {
-    prv_id = "private_canv_col";
-  }
-  const prv = document.getElementById(prv_id);
-  prv.classList.add("show");
-  if (cur_chat_user.includes(user_name)) return;
-  cur_chat_user.push(user_name);
-  model.people(cur_chat_user);
-  view_chatbox(user_name);
+function view_chatbox(name) {
+  const next = name === "main" ? mainChatbox : document.getElementById(chatId(name));
+  const current = activeChat === "main" ? mainChatbox : document.getElementById(chatId(activeChat));
+  if (!next) return;
+  current?.classList.add("d-none");
+  next.classList.remove("d-none");
+  activeChat = name;
   toggleCanvas();
+}
+
+function removeConversation(name) {
+  model.people.remove(name);
+  if (activeChat === name) view_chatbox("main");
+}
+
+function dm(button) {
+  const name = button.dataset.user;
+  if (!name || name === currentUser.name) return;
+  ensureConversation(name);
+  view_chatbox(name);
 }
 
 function toggleCanvas() {
-  const off_canv = document.getElementsByClassName("offcanvas show");
-  if (off_canv[0]) {
-    off_canv[0].classList.toggle("show");
+  const openCanvas = document.querySelector(".offcanvas.show");
+  if (openCanvas) bootstrap.Offcanvas.getOrCreateInstance(openCanvas).hide();
+}
+
+document.querySelectorAll(".main_collapse").forEach((element) => {
+  element.addEventListener("click", () => view_chatbox("main"));
+});
+
+function display_message(from, conversation, position, text) {
+  const chatBody = document.getElementById(`${chatId(conversation)}-msg-list`);
+  if (!chatBody) return;
+
+  const row = document.createElement("div");
+  row.classList.add("message-row", `justify-content-${position}`);
+
+  const bubble = document.createElement("div");
+  bubble.classList.add("message-bubble");
+
+  if (from) {
+    const author = document.createElement("p");
+    author.classList.add("small", "mb-1", "fw-semibold");
+    author.innerText = from;
+    bubble.appendChild(author);
+  }
+
+  const message = document.createElement("p");
+  message.classList.add("small", "p-2", "mb-0", "rounded-3");
+  message.innerText = text;
+  bubble.appendChild(message);
+  row.appendChild(bubble);
+  chatBody.appendChild(row);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+function sent_message(button) {
+  const input = button.parentElement.querySelector("input");
+  const message = input.value.trim();
+  const recipient = button.dataset.recipient || "main";
+  if (!message) return;
+
+  const event = recipient === "main" ? "send" : "dm";
+  const payload = recipient === "main" ? { message } : { to: recipient, message };
+
+  socket.emit(event, payload, (response = {}) => {
+    if (!response.ok) {
+      setStatus(response.error || "Message could not be sent", "danger");
+      return;
+    }
+    display_message("You", recipient, "end", message);
+    input.value = "";
+    input.focus();
+  });
+}
+
+function sendOnEnter(event, button) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    sent_message(button);
   }
 }
 
-[...channel_collapse].forEach((e) => {
-  e.addEventListener("click", function () {
-    view_chatbox("main");
+socket.on("connect", () => {
+  setStatus("Connected", "success");
+  socket.emit("new-user-joined", currentUser, (response = {}) => {
+    if (!response.ok) setStatus(response.error || "Could not join chat", "danger");
   });
 });
 
-function display_message(from, to, position, txt) {
-  console.log('display to', to)
-  const chat_body = document.getElementById(to + '-msg-list')
-  o_div = document.createElement('div')
-  o_div.classList.add('o_div', 'justify-content-' + position)
-  o_div.style.setProperty('display', 'grid')
-  n_div = document.createElement('div')
-  n_div.classList.add('n_div')
-  m_div = document.createElement('div')
-  m_div.classList.add('m_div')
-  message = document.createElement('p')
-  message.classList.add('small', 'p-2', 'ms-3', 'mb-3', 'rounded-3')
-  u_name = document.createElement('p')
-  u_name.classList.add('small', 'mb-1')
-  message.innerText = txt
-  message.style.setProperty('background-color', '#f5f6f7')
-  u_name.innerText = from
-  m_div.appendChild(message)
-  n_div.appendChild(u_name)
-  o_div.appendChild(n_div)
-  o_div.appendChild(m_div)
-  chat_body.appendChild(o_div)
-  chat_body.scrollTop = chat_body.scrollHeight
+socket.on("disconnect", () => setStatus("Disconnected — reconnecting…", "warning"));
+socket.on("connect_error", () => setStatus("Unable to reach chat server", "danger"));
 
-}
+socket.on("user-list", (users) => {
+  model.onlineUser(users.filter((user) => user.name !== currentUser.name));
+});
 
-function sent_message(e) {
-  const id = e.id;
-  const inp_field = e.parentElement.children[0]
-  if (id == "Send" && inp_field.value != '') {
-    socket.emit('send', { message: inp_field.value, id })
-    display_message('You', 'main', 'end', inp_field.value)
-    inp_field.value = ''
-    inp_field.focus()
-  } else if (inp_field.value != '') {
-    const to = id.split('-')[0]
-    console.log('send msg', to)
-    const data = { to: to, from: user_name, message: inp_field.value }
-    socket.emit('dm', data)
-    display_message('You', to, 'end', inp_field.value)
-    inp_field.value = ''
-    inp_field.focus()
-  }
-}
+socket.on("user-joined", (user) => {
+  display_message("", "main", "center", `${user.name} joined the chat`);
+});
 
-socket.on('userIncrement', data => {
-  console.log('user increment called', data)
-  for (var key in data) {
-    model.onlineUser.push(data[key])
+socket.on("receive", (data) => {
+  display_message(data.name, "main", "start", data.message);
+});
 
-  }
-  model.onlineUser.push(cur_data)
-})
+socket.on("dm-received", (data) => {
+  ensureConversation(data.name);
+  display_message(data.name, data.name, "start", data.message);
+});
 
-socket.on('user-joined', data => {
-  console.log('user joined', data)
-  display_message('', 'main', 'center', `${data.detail.name} Joined the Chat`)
-  model.onlineUser.push(data.detail)
-})
+socket.on("disconnected", (user) => {
+  display_message("", "main", "center", `${user.name} left the chat`);
+});
 
-socket.on('receive', data => {
-  display_message(data.name, 'main', 'start', data.message)
-})
-
-socket.on('dm-received', data => {
-  console.log('dm received called')
-  if (model.people.indexOf(data.name) === -1) {
-    model.people.push(data.name)
-  }
-  display_message(data.name, data.name, 'start', data.message)
-})
-
-socket.on('disconnected', data => {
-  console.log('dis', data, data.onUsers)
-  display_message('', 'main', 'center', `${data.detail.name} left the Chat`)
-  model.onlineUser.pop(data.detail)
-})
