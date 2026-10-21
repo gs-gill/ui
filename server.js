@@ -13,6 +13,7 @@ function createChatServer() {
   const server = http.createServer(app);
   const io = new Server(server, { pingTimeout: 20000 });
   const users = new Map();
+  const sessions = new Map();
   const roomHistory = [];
 
   app.get("/", (_request, response) => response.sendFile(path.join(__dirname, "login.html")));
@@ -42,21 +43,43 @@ function createChatServer() {
         name: cleanText(rawUser?.name, 40),
         age: cleanText(rawUser?.age ?? rawUser?.Age, 3),
         gender: cleanText(rawUser?.gender, 24) || "Prefer not to say",
+        session: cleanText(rawUser?.session, 100),
       };
 
       if (user.name.length < 2) {
         reply(callback, { ok: false, error: "Enter a name with at least 2 characters" });
         return;
       }
-      if (findRecipient(user.name)) {
+      if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(user.session)) {
+        reply(callback, { ok: false, error: "Refresh the page to reconnect" });
+        return;
+      }
+      const currentIdentity = users.get(socket.id);
+      if (currentIdentity && (currentIdentity.session !== user.session || currentIdentity.name.toLowerCase() !== user.name.toLowerCase())) {
+        reply(callback, { ok: false, error: "This connection already belongs to another name" });
+        return;
+      }
+      const existingSession = sessions.get(user.session);
+      if (existingSession && existingSession.name.toLowerCase() !== user.name.toLowerCase()) {
+        reply(callback, { ok: false, error: "This session already belongs to another name" });
+        return;
+      }
+      const namesake = findRecipient(user.name);
+      if (namesake && namesake[1].session !== user.session) {
         reply(callback, { ok: false, error: "That name is already in use" });
         return;
       }
 
+      if (existingSession && existingSession.socketId !== socket.id) {
+        users.delete(existingSession.socketId);
+        io.sockets.sockets.get(existingSession.socketId)?.disconnect(true);
+      }
+      const alreadyJoined = users.has(socket.id);
       users.set(socket.id, user);
-      socket.broadcast.emit("presence", { type: "joined", user });
+      sessions.set(user.session, { socketId: socket.id, name: user.name });
+      if (!alreadyJoined && !existingSession) socket.broadcast.emit("presence", { type: "joined", user: { name: user.name } });
       io.emit("user-list", publicUsers());
-      reply(callback, { ok: true, user, history: roomHistory });
+      reply(callback, { ok: true, user: { name: user.name, age: user.age, gender: user.gender }, history: roomHistory });
     });
 
     socket.on("send", (payload, callback) => {
@@ -107,7 +130,10 @@ function createChatServer() {
       const user = users.get(socket.id);
       if (!user) return;
       users.delete(socket.id);
-      socket.broadcast.emit("presence", { type: "left", user });
+      if (sessions.get(user.session)?.socketId === socket.id) {
+        sessions.delete(user.session);
+        socket.broadcast.emit("presence", { type: "left", user: { name: user.name } });
+      }
       io.emit("user-list", publicUsers());
     });
   });

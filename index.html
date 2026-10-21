@@ -23,11 +23,16 @@
         <button id="open-conversations" class="icon-button mobile-only" aria-label="Open conversations">☰</button>
         <div class="active-avatar" id="active-avatar">#</div>
         <div class="active-copy"><h1 id="active-title">Main room</h1><p id="active-status">Everyone who's online</p></div>
-        <div class="header-actions"><span id="connection-status" class="connection-pill"><i></i><span>Connecting</span></span><button id="open-people" class="icon-button people-button" aria-label="Show online people"><span>People</span><b id="online-count">0</b></button></div>
+        <div class="header-actions"><span id="connection-status" class="connection-pill" role="status"><i></i><span>Connecting</span></span><button id="open-people" class="icon-button people-button" aria-label="Show online people"><span>People</span><b id="online-count">0</b></button></div>
       </header>
       <section id="message-list" class="message-list" aria-live="polite" aria-label="Messages"></section>
       <div id="typing-indicator" class="typing-indicator" aria-live="polite"></div>
       <form id="composer" class="composer"><div class="composer-box"><textarea id="message-input" rows="1" maxlength="2000" placeholder="Message the room" aria-label="Message"></textarea><span class="composer-hint">Shift + Enter for a new line</span><button id="send-button" type="submit" aria-label="Send message">↗</button></div><p id="composer-error" class="composer-error" role="alert"></p></form>
+      <nav class="mobile-nav" aria-label="Chat navigation">
+        <button id="mobile-room" type="button" class="mobile-nav-item active" aria-label="Open main room"><span aria-hidden="true">#</span><strong>Room</strong></button>
+        <button id="mobile-chats" type="button" class="mobile-nav-item" aria-label="Open conversations"><span aria-hidden="true">☰</span><strong>Chats</strong><b id="mobile-unread" hidden>0</b></button>
+        <button id="mobile-people" type="button" class="mobile-nav-item" aria-label="Show online people"><span aria-hidden="true">👥</span><strong>People</strong><b id="mobile-online">0</b></button>
+      </nav>
     </main>
 
     <aside class="people-sidebar" id="people-sidebar">
