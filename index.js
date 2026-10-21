@@ -20,6 +20,7 @@ const state = {
   active: "room",
   joined: false,
   sending: false,
+  joinRetries: 0,
   conversations: new Map([["room", { id: "room", name: "Main room", unread: 0, preview: "The public conversation", online: true }]]),
   messages: new Map([["room", []]]),
   onlineUsers: [],
@@ -381,11 +382,20 @@ socket.on("connect", () => {
       return;
     }
     if (!response.ok) {
+      if (response.error === "That name is already in use" && state.joinRetries < 5) {
+        state.joinRetries += 1;
+        setConnection("Waiting to join", "warning");
+        setTimeout(() => {
+          if (socket.id === connectionId && socket.connected && !state.joined) socket.disconnect().connect();
+        }, 1500);
+        return;
+      }
       setConnection(response.error || "Could not join", "error");
       elements.composerError.textContent = response.error || "Could not join chat.";
       return;
     }
     state.joined = true;
+    state.joinRetries = 0;
     updateComposerAvailability();
     setConnection("Connected", "connected");
     elements.composerError.textContent = "";
