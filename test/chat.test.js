@@ -51,6 +51,11 @@ test("presence, room history, DMs, typing, validation and disconnects work", asy
   assert.deepEqual(await emitWithAck(duplicate, "new-user-joined", profile("alice")), { ok: false, error: "That name is already in use" });
   duplicate.close();
 
+  const legacy = await connect(url);
+  assert.equal((await emitWithAck(legacy, "new-user-joined", { name: "Legacy" })).ok, true);
+  assert.equal((await emitWithAck(legacy, "new-user-joined", { name: "Legacy" })).ok, true);
+  legacy.close();
+
   assert.deepEqual(await emitWithAck(alice, "new-user-joined", profile("Imposter")), { ok: false, error: "This connection already belongs to another name" });
 
   const roomIncoming = once(bob, "room-message");

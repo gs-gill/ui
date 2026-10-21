@@ -43,7 +43,7 @@ function createChatServer() {
         name: cleanText(rawUser?.name, 40),
         age: cleanText(rawUser?.age ?? rawUser?.Age, 3),
         gender: cleanText(rawUser?.gender, 24) || "Prefer not to say",
-        session: cleanText(rawUser?.session, 100),
+        session: cleanText(rawUser?.session, 100) || users.get(socket.id)?.session || crypto.randomUUID(),
       };
 
       if (user.name.length < 2) {
