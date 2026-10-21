@@ -7,9 +7,19 @@ const currentUser = {
 
 if (!currentUser.name) window.location.replace("/");
 
+const storedName = sessionStorage.getItem("pulse-session-name");
+if (storedName !== currentUser.name) {
+  sessionStorage.setItem("pulse-session-name", currentUser.name);
+  sessionStorage.setItem("pulse-session-id", crypto.randomUUID());
+}
+currentUser.session = sessionStorage.getItem("pulse-session-id") || crypto.randomUUID();
+sessionStorage.setItem("pulse-session-id", currentUser.session);
+
 const socket = io();
 const state = {
   active: "room",
+  joined: false,
+  sending: false,
   conversations: new Map([["room", { id: "room", name: "Main room", unread: 0, preview: "The public conversation", online: true }]]),
   messages: new Map([["room", []]]),
   onlineUsers: [],
@@ -30,6 +40,8 @@ const elements = {
   connection: document.getElementById("connection-status"),
   totalUnread: document.getElementById("total-unread"),
   onlineCount: document.getElementById("online-count"),
+  mobileOnline: document.getElementById("mobile-online"),
+  mobileUnread: document.getElementById("mobile-unread"),
   typing: document.getElementById("typing-indicator"),
   alertToggle: document.getElementById("alert-toggle"),
   toastRegion: document.getElementById("toast-region"),
@@ -59,6 +71,8 @@ function updateTitle() {
   document.title = total ? `(${total}) Pulse` : "Pulse";
   elements.totalUnread.textContent = total;
   elements.totalUnread.hidden = total === 0;
+  elements.mobileUnread.textContent = total;
+  elements.mobileUnread.hidden = total === 0;
 }
 
 function renderConversations() {
@@ -193,21 +207,30 @@ function renderMessages() {
   elements.messageList.scrollTop = elements.messageList.scrollHeight;
 }
 
-function selectConversation(id) {
+function updateComposerAvailability() {
+  const conversation = state.conversations.get(state.active);
+  const recipientOffline = state.active !== "room" && !conversation?.online;
+  elements.input.disabled = recipientOffline;
+  document.getElementById("send-button").disabled = !state.joined || state.sending || recipientOffline;
+}
+
+function selectConversation(id, { focus = true, markRead = true, close = true } = {}) {
   const conversation = state.conversations.get(id);
   if (!conversation) return;
   state.active = id;
-  conversation.unread = 0;
+  if (markRead && !document.hidden) conversation.unread = 0;
   elements.activeTitle.textContent = conversation.name;
   elements.activeAvatar.textContent = id === "room" ? "#" : initials(conversation.name);
   elements.activeStatus.textContent = id === "room" ? `${state.onlineUsers.length + 1} ${state.onlineUsers.length ? "people" : "person"} online` : (conversation.online ? "Online now" : "Offline · messages cannot be delivered");
   elements.input.placeholder = id === "room" ? "Message the room" : `Message ${conversation.name}`;
-  elements.input.disabled = id !== "room" && !conversation.online;
-  document.getElementById("send-button").disabled = elements.input.disabled;
+  updateComposerAvailability();
+  document.getElementById("mobile-room").classList.toggle("active", id === "room");
+  document.getElementById("mobile-chats").classList.toggle("active", id !== "room");
   renderConversations();
   renderMessages();
   renderTyping();
-  elements.input.focus();
+  if (close) closePanels();
+  if (focus) elements.input.focus();
 }
 
 function addMessage(conversationId, message, notify = false) {
@@ -216,7 +239,7 @@ function addMessage(conversationId, message, notify = false) {
   conversation.preview = message.system ? message.text : `${message.from === currentUser.name ? "You: " : ""}${message.text}`;
 
   if (state.active === conversationId) renderMessages();
-  else if (!message.system) {
+  if ((state.active !== conversationId || document.hidden) && !message.system) {
     conversation.unread += 1;
     if (notify) showAlert(conversationId, message);
   }
@@ -302,16 +325,25 @@ elements.composer.addEventListener("submit", (event) => {
   event.preventDefault();
   const text = elements.input.value.trim();
   if (!text) return;
+  if (!state.joined) { elements.composerError.textContent = "Reconnecting to chat. Your message is ready to send."; return; }
+  if (state.sending) return;
+  const conversationId = state.active;
+  state.sending = true;
+  updateComposerAvailability();
   elements.composerError.textContent = "";
-  const eventName = state.active === "room" ? "send" : "dm";
-  const payload = state.active === "room" ? { message: text } : { to: state.active, message: text };
-  socket.emit(eventName, payload, (response = {}) => {
-    if (!response.ok) { elements.composerError.textContent = response.error || "Message could not be sent."; return; }
-    addMessage(state.active, response.message);
-    elements.input.value = "";
-    elements.input.style.height = "auto";
-    socket.emit("typing", { to: state.active, active: false });
-    elements.input.focus();
+  const eventName = conversationId === "room" ? "send" : "dm";
+  const payload = conversationId === "room" ? { message: text } : { to: conversationId, message: text };
+  socket.timeout(10000).emit(eventName, payload, (error, response = {}) => {
+    state.sending = false;
+    updateComposerAvailability();
+    if (error || !response.ok) { elements.composerError.textContent = response.error || "Could not confirm delivery. Please try again."; return; }
+    addMessage(conversationId, response.message);
+    if (state.active === conversationId && elements.input.value.trim() === text) {
+      elements.input.value = "";
+      elements.input.style.height = "auto";
+    }
+    socket.emit("typing", { to: conversationId, active: false });
+    if (state.active === conversationId) elements.input.focus();
   });
 });
 
@@ -327,6 +359,9 @@ function closePanels() {
 
 document.getElementById("open-conversations").addEventListener("click", () => openPanel("conversation-sidebar"));
 document.getElementById("open-people").addEventListener("click", () => openPanel("people-sidebar"));
+document.getElementById("mobile-room").addEventListener("click", () => selectConversation("room"));
+document.getElementById("mobile-chats").addEventListener("click", () => openPanel("conversation-sidebar"));
+document.getElementById("mobile-people").addEventListener("click", () => openPanel("people-sidebar"));
 document.getElementById("panel-backdrop").addEventListener("click", closePanels);
 document.querySelectorAll("[data-close-panel]").forEach((button) => button.addEventListener("click", closePanels));
 elements.alertToggle.addEventListener("click", toggleAlerts);
@@ -334,15 +369,32 @@ elements.alertToggle.classList.toggle("enabled", state.alerts);
 elements.alertToggle.setAttribute("aria-pressed", String(state.alerts));
 
 socket.on("connect", () => {
-  setConnection("Connected", "connected");
-  socket.emit("new-user-joined", currentUser, (response = {}) => {
-    if (!response.ok) { setConnection(response.error || "Could not join", "error"); elements.input.disabled = true; return; }
+  state.joined = false;
+  updateComposerAvailability();
+  setConnection("Joining…", "warning");
+  const connectionId = socket.id;
+  socket.timeout(10000).emit("new-user-joined", currentUser, (error, response = {}) => {
+    if (socket.id !== connectionId || !socket.connected) return;
+    if (error) {
+      setConnection("Reconnecting", "warning");
+      socket.disconnect().connect();
+      return;
+    }
+    if (!response.ok) {
+      setConnection(response.error || "Could not join", "error");
+      elements.composerError.textContent = response.error || "Could not join chat.";
+      return;
+    }
+    state.joined = true;
+    updateComposerAvailability();
+    setConnection("Connected", "connected");
+    elements.composerError.textContent = "";
     state.messages.set("room", response.history || []);
     renderMessages();
   });
 });
-socket.on("disconnect", () => setConnection("Reconnecting", "warning"));
-socket.on("connect_error", () => setConnection("Offline", "error"));
+socket.on("disconnect", () => { state.joined = false; state.sending = false; updateComposerAvailability(); setConnection("Reconnecting", "warning"); });
+socket.on("connect_error", () => { state.joined = false; state.sending = false; updateComposerAvailability(); setConnection("Offline", "error"); });
 
 socket.on("user-list", (users) => {
   state.onlineUsers = users.filter((user) => user.name !== currentUser.name);
@@ -350,8 +402,9 @@ socket.on("user-list", (users) => {
     if (conversation.id !== "room") conversation.online = state.onlineUsers.some((user) => user.name === conversation.name);
   }
   elements.onlineCount.textContent = state.onlineUsers.length;
+  elements.mobileOnline.textContent = state.onlineUsers.length;
   renderPeople();
-  selectConversation(state.active);
+  selectConversation(state.active, { focus: false, markRead: false, close: false });
 });
 
 socket.on("presence", ({ type, user }) => addMessage("room", { system: true, text: `${user.name} ${type === "joined" ? "joined" : "left"} the room`, timestamp: new Date().toISOString() }));
@@ -372,3 +425,4 @@ window.addEventListener("focus", () => {
 renderConversations();
 renderPeople();
 renderMessages();
+updateComposerAvailability();
